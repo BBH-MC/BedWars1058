@@ -28,7 +28,7 @@ BedWars1058 will hook into it and do everything for you, no additional configura
 
 # Pre-made setups and community add-ons
 
-You can find a list of pre-made server setups and a lot of community add-ons [on BedWars1058 Wiki](https://wiki.andrei1058.dev/docs/BedWars1058/addons).
+You can find a list of pre-made server setups and a lot of community add-ons on the BedWars1058 wiki.
 
 # Main features
 

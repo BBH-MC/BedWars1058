@@ -7,7 +7,7 @@
     <parent>
         <artifactId>BedWars1058</artifactId>
         <groupId>com.andrei1058.bedwars</groupId>
-        <version>25.2</version>
+        <version>26.0</version>
     </parent>
 
     <artifactId>resetadapter-slimepaper</artifactId>
@@ -54,6 +54,14 @@
             <artifactId>api</artifactId>
             <version>1.20-R0.1-SNAPSHOT</version>
             <scope>provided</scope>
+            <exclusions>
+                <!-- pulls flow-nbt 2.0.2 which is no longer published anywhere,
+                     the 2.0.0 pinned below is what this module compiles against -->
+                <exclusion>
+                    <groupId>com.flowpowered</groupId>
+                    <artifactId>flow-nbt</artifactId>
+                </exclusion>
+            </exclusions>
         </dependency>
         <dependency>
             <groupId>com.flowpowered</groupId>

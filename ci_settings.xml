@@ -11,11 +11,6 @@
                 </httpHeaders>
             </configuration>
         </server>
-        <server>
-            <id>ftp-repo</id>
-            <username>${env.MVN_REPO_USER}</username>
-            <password>${env.MVN_REPO_PASS}</password>
-        </server>
     </servers>
 <!--    <mirrors>-->
 <!--        <mirror>-->

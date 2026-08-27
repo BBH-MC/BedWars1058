@@ -7,11 +7,13 @@
     <groupId>com.andrei1058.bedwars</groupId>
     <artifactId>BedWars1058</artifactId>
     <packaging>pom</packaging>
-    <version>25.2</version>
+    <version>26.0</version>
 
     <properties>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
+        <!-- SidebarLib is built from source, it is no longer published to a repository we can reach -->
+        <sidebar.version>26.0</sidebar.version>
     </properties>
 
     <repositories>
@@ -32,6 +34,11 @@
         <repository>
             <id>codemc-nms</id>
             <url>https://repo.codemc.io/repository/nms/</url>
+        </repository>
+        <!-- serves the bungeecord artifacts, the old sonatype snapshot repo no longer does -->
+        <repository>
+            <id>papermc</id>
+            <url>https://repo.papermc.io/repository/maven-public/</url>
         </repository>
         <repository>
             <id>rapture-pw</id>
@@ -69,13 +76,6 @@
     </dependencies>
 
     <build>
-        <extensions>
-            <extension>
-                <groupId>org.apache.maven.wagon</groupId>
-                <artifactId>wagon-ftp</artifactId>
-                <version>3.5.3</version>
-            </extension>
-        </extensions>
         <plugins>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
@@ -126,16 +126,6 @@
         <module>versionsupport_v1_20_R2</module>
         <module>versionsupport_v1_20_R3</module>
         <module>versionsupport_v1_20_R4</module>
+        <module>versionsupport_v1_21_R7</module>
     </modules>
-
-    <distributionManagement>
-        <repository>
-            <id>ftp-repo</id>
-            <url>ftp://andrei1058.dev/releases</url>
-        </repository>
-        <snapshotRepository>
-            <id>ftp-repo</id>
-            <url>ftp://andrei1058.dev/snapshots</url>
-        </snapshotRepository>
-    </distributionManagement>
 </project>
