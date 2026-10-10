@@ -28,16 +28,15 @@ import com.google.common.io.ByteArrayDataInput;
 import com.google.common.io.ByteStreams;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
-import org.bukkit.scheduler.BukkitScheduler;
 import org.bukkit.scheduler.BukkitTask;
 import org.eclipse.paho.mqttv5.client.*;
-import org.eclipse.paho.mqttv5.client.persist.MemoryPersistence;
 import org.eclipse.paho.mqttv5.common.MqttException;
 import org.eclipse.paho.mqttv5.common.MqttMessage;
 import org.eclipse.paho.mqttv5.common.packet.MqttProperties;
 import org.slf4j.LoggerFactory;
 
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.Objects;
 import java.util.logging.Logger;
 
@@ -47,22 +46,42 @@ public class LobbyMQTT {
     private static String mqttHost;
     private static String mqttUsername;
     private static String mqttPassword;
+    private static String mqttTruststore;
+    private static String mqttTruststorePassword;
+    private static String mqttTruststoreType;
 
     private static String topicPrefix;
     private static String clientID;
 
-    private static MqttClient mqtt;
+    private static volatile MqttClient mqtt;
+    private static volatile MQTTReconnector reconnector;
+
+    // Reconnect backoff: 10 s, doubling up to 5 min
+    private static final long RECONNECT_INITIAL_DELAY_MS = 10_000L;
+    private static final long RECONNECT_MAX_DELAY_MS = 300_000L;
 
     private static Logger logger;
 
     public LobbyMQTT(String host, String tPrefix, String username, String password, String serverID) {
+        this(host, tPrefix, username, password, serverID, null, null, null);
+    }
+
+    /**
+     * @param host               "host:port" for plain MQTT (tcp:// is added), or a full URI such as "ssl://host:8883".
+     * @param truststore         optional truststore file for ssl://, relative to the server's working directory.
+     * @param truststorePassword optional truststore password.
+     * @param truststoreType     optional truststore type, PKCS12 if empty.
+     */
+    public LobbyMQTT(String host, String tPrefix, String username, String password, String serverID,
+                     String truststore, String truststorePassword, String truststoreType) {
+        logger = BedWars.plugin.getLogger();
+
         // Check nulls
         if (host == null || tPrefix == null || serverID == null) {
             logger.severe("MQTT Setup Failed: Mandatory MQTT parameters missing.");
             return;
         }
 
-        logger = BedWars.plugin.getLogger();
         topicPrefix = tPrefix;
         clientID = serverID;
 
@@ -70,40 +89,67 @@ public class LobbyMQTT {
         mqttHost = host;
         mqttUsername = username;
         mqttPassword = password;
-        AttemptMQTTConnection();
+        mqttTruststore = truststore;
+        mqttTruststorePassword = truststorePassword;
+        mqttTruststoreType = truststoreType;
+
+        reconnector = new MQTTReconnector((task, delayMillis) -> {
+            BukkitTask t = Bukkit.getScheduler().runTaskLaterAsynchronously(BedWars.plugin, task, Math.max(1L, delayMillis / 50L));
+            return t::cancel;
+        }, LobbyMQTT::attemptConnection, logger, RECONNECT_INITIAL_DELAY_MS, RECONNECT_MAX_DELAY_MS);
+
+        if (!attemptConnection()) {
+            reconnector.schedule();
+        }
     }
 
-    private void AttemptMQTTConnection() {
-        MqttClient mqtt1;
+    /**
+     * Connects to the broker unless already connected. Only one attempt runs at a time.
+     * @return true if connected.
+     */
+    private static synchronized boolean attemptConnection() {
+        MqttClient current = mqtt;
+        if (current != null && current.isConnected()) {
+            return true;
+        }
+        // Drop the old (disconnected) client, so its threads don't linger
+        mqtt = null;
+        MQTTTransport.close(current);
 
-        try {
-            mqtt1 = new MqttClient("tcp://" + mqttHost, clientID, new MemoryPersistence());
-
-            // Connection options
-            MqttConnectionOptions connOpts = new MqttConnectionOptions();
-
-            // Setup user/pass if appropriate
-            if (mqttUsername != null && !mqttUsername.isEmpty() && mqttPassword != null && !mqttPassword.isEmpty()) {
-                connOpts.setUserName(mqttUsername);
-                connOpts.setPassword(mqttPassword.getBytes(StandardCharsets.UTF_8));
+        MqttClient client = MQTTTransport.connect(mqttHost, clientID, mqttUsername, mqttPassword,
+                mqttTruststore, mqttTruststorePassword, mqttTruststoreType, new LobbyMQTTCallback(), logger);
+        if (client == null) {
+            return false;
+        }
+        mqtt = client;
+        if (reconnector != null) {
+            reconnector.connected();
+        }
+        // Subscriptions don't survive a new session: re-announce enabled arenas and subscribe to their joins.
+        Bukkit.getScheduler().runTaskAsynchronously(BedWars.plugin, () -> {
+            for (IArena arena : new ArrayList<>(Arena.getArenas())) {
+                publishArenaStatus(arena);
+                subscribeArenaJoins(arena);
             }
+        });
+        return true;
+    }
 
-            // Set up the callbacks
-            mqtt1.setCallback(new LobbyMQTTCallback());
-
-            // Connect
-            mqtt1.connect(connOpts);
-        } catch (MqttException e) {
-            logger.severe("MQTT Setup Failed: Failed to connect to MQTT broker. " + e.getMessage());
-            logger.severe("Cause: " + e.getCause());
-            mqtt1 = null;
+    /** Called on plugin disable: stops reconnecting and disconnects. Safe to call when MQTT was never set up. */
+    public static synchronized void shutdown() {
+        if (reconnector != null) {
+            reconnector.stop();
+            reconnector = null;
         }
+        MqttClient current = mqtt;
+        mqtt = null;
+        MQTTTransport.close(current);
+    }
 
-        mqtt = mqtt1;
-
-        if (mqtt == null) {
-            logger.severe("MQTT Setup Failed: Unknown error.");
-        }
+    /** The client if connected, else null. Callers keep the returned reference, so it can't change under them. */
+    private static MqttClient connectedClient() {
+        MqttClient current = mqtt;
+        return current != null && current.isConnected() ? current : null;
     }
 
     private static String getArenaTopic(IArena arena, String property) {
@@ -114,7 +160,8 @@ public class LobbyMQTT {
     }
 
     public static void publishArenaStatus(IArena arena) {
-        if (mqtt == null || !mqtt.isConnected()) {
+        MqttClient mqtt = connectedClient();
+        if (mqtt == null) {
             return;
         }
 
@@ -157,7 +204,8 @@ public class LobbyMQTT {
     }
 
     public static void publishPlayerStatus(Player player) {
-        if (mqtt == null || !mqtt.isConnected()) {
+        MqttClient mqtt = connectedClient();
+        if (mqtt == null) {
             return;
         }
 
@@ -193,7 +241,8 @@ public class LobbyMQTT {
     }
 
     public static void subscribeArenaJoins(IArena arena) {
-        if (mqtt == null || !mqtt.isConnected()) {
+        MqttClient mqtt = connectedClient();
+        if (mqtt == null) {
             return;
         }
         try {
@@ -204,7 +253,8 @@ public class LobbyMQTT {
     }
 
     public static void unsubscribeArenaJoins(String arenaGroup, String arenaID) {
-        if (mqtt == null || !mqtt.isConnected()) {
+        MqttClient mqtt = connectedClient();
+        if (mqtt == null) {
             return;
         }
         try {
@@ -215,7 +265,8 @@ public class LobbyMQTT {
     }
 
     public static void clearArenaJoin(String playerUUID, String arenaID, String arenaGroup) {
-        if (mqtt == null || !mqtt.isConnected()) {
+        MqttClient mqtt = connectedClient();
+        if (mqtt == null) {
             return;
         }
         try {
@@ -230,7 +281,8 @@ public class LobbyMQTT {
     }
 
     public static void unpublishPlayerStatus(Player player) {
-        if (mqtt == null || !mqtt.isConnected()) {
+        MqttClient mqtt = connectedClient();
+        if (mqtt == null) {
             return;
         }
         try {
@@ -251,7 +303,8 @@ public class LobbyMQTT {
     }
 
     public static void unpublishArenaStatus(String arenaGroup, String arenaID) {
-        if (mqtt == null || !mqtt.isConnected()) {
+        MqttClient mqtt = connectedClient();
+        if (mqtt == null) {
             return;
         }
         try {
@@ -283,28 +336,14 @@ public class LobbyMQTT {
         }
     }
 
-    class LobbyMQTTCallback implements MqttCallback {
-        private boolean reconnectionRequired = false;
-        private final BukkitScheduler scheduler = Bukkit.getServer().getScheduler();
-        private final BukkitTask reconnectSchedule = scheduler.runTaskTimerAsynchronously(BedWars.plugin, this::reconnectTask, 1200L, 1200L);
-
-        private void reconnectTask() {
-            if (!reconnectionRequired) {
-                return;
-            }
-
-            if (mqtt.isConnected()) {
-                return;
-            }
-
-            AttemptMQTTConnection();
-        }
-
+    static class LobbyMQTTCallback implements MqttCallback {
         @Override
         public void disconnected(MqttDisconnectResponse mqttDisconnectResponse) {
-            // Reconnect task
-            reconnectionRequired = true;
-            logger.warning("MQTT Server has disconnected! Attempting reconnection in 60 seconds!");
+            logger.warning("MQTT Server has disconnected! " + mqttDisconnectResponse);
+            MQTTReconnector r = reconnector;
+            if (r != null) {
+                r.schedule();
+            }
         }
 
         @Override
@@ -344,7 +383,6 @@ public class LobbyMQTT {
         @Override
         public void connectComplete(boolean b, String s) {
             logger.info("MQTT Connection successful: " + s);
-            reconnectionRequired = false;
         }
 
         @Override
