@@ -20,9 +20,14 @@
 
 package com.andrei1058.bedwars.lobbymqtt;
 
+import org.eclipse.paho.mqttv5.client.MqttCallback;
+import org.eclipse.paho.mqttv5.client.MqttClient;
 import org.eclipse.paho.mqttv5.client.MqttConnectionOptions;
+import org.eclipse.paho.mqttv5.client.persist.MemoryPersistence;
+import org.eclipse.paho.mqttv5.common.MqttException;
 
 import java.io.File;
+import java.nio.charset.StandardCharsets;
 import java.util.Properties;
 import java.util.logging.Logger;
 
@@ -45,6 +50,7 @@ public final class MQTTTransport {
      */
     static final String TLS_PROTOCOL = "TLSv1.3";
     static final String DEFAULT_TRUSTSTORE_TYPE = "PKCS12";
+    static final int CONNECTION_TIMEOUT_SECONDS = 10;
 
     private MQTTTransport() {
     }
@@ -111,5 +117,62 @@ public final class MQTTTransport {
         options.setSSLProperties(ssl);
         options.setHttpsHostnameVerificationEnabled(true);
         return true;
+    }
+
+    /**
+     * Creates a client and connects it. On failure, logs why (never the passwords),
+     * closes the client and returns null.
+     */
+    public static MqttClient connect(String host, String clientID, String username, String password,
+                                     String truststore, String truststorePassword, String truststoreType,
+                                     MqttCallback callback, Logger logger) {
+        String serverURI = serverURI(host);
+        MqttClient client = null;
+        try {
+            MqttConnectionOptions connOpts = new MqttConnectionOptions();
+            connOpts.setConnectionTimeout(CONNECTION_TIMEOUT_SECONDS);
+
+            // TLS (ssl://) settings
+            if (!applyTLS(connOpts, serverURI, truststore, truststorePassword, truststoreType, logger)) {
+                return null;
+            }
+
+            // Setup user/pass if appropriate
+            if (username != null && !username.isEmpty() && password != null && !password.isEmpty()) {
+                connOpts.setUserName(username);
+                connOpts.setPassword(password.getBytes(StandardCharsets.UTF_8));
+            }
+
+            client = new MqttClient(serverURI, clientID, new MemoryPersistence());
+            client.setCallback(callback);
+            client.connect(connOpts);
+            return client;
+        } catch (MqttException e) {
+            logger.severe("MQTT: failed to connect to MQTT broker " + serverURI
+                    + " (reason code " + e.getReasonCode() + "). " + e.getMessage());
+            logger.severe("Cause: " + e.getCause());
+        } catch (IllegalArgumentException e) {
+            // Paho rejects malformed or unsupported broker URIs this way
+            logger.severe("MQTT: invalid broker URI " + serverURI + ". " + e.getMessage());
+        }
+        close(client);
+        return null;
+    }
+
+    /** Disconnects (if connected) and closes a client, ignoring errors. Null-safe. */
+    public static void close(MqttClient client) {
+        if (client == null) {
+            return;
+        }
+        try {
+            if (client.isConnected()) {
+                client.disconnect(2000);
+            }
+        } catch (MqttException ignored) {
+        }
+        try {
+            client.close(true);
+        } catch (MqttException ignored) {
+        }
     }
 }

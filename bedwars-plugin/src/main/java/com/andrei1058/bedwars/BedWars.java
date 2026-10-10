@@ -605,6 +605,7 @@ public class BedWars extends JavaPlugin {
         if (!serverSoftwareSupport) return;
         if (getServerType() == ServerType.BUNGEE) {
             ArenaSocket.disable();
+            LobbyMQTT.shutdown();
         }
         for (IArena a : new LinkedList<>(Arena.getArenas())) {
             try {
