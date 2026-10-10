@@ -105,6 +105,9 @@ public class MainConfig extends ConfigManager {
         yml.addDefault(ConfigPath.GENERAL_CONFIGURATION_BUNGEE_MQTT_TOPIC_PREFIX, "/bedwars1058");
         yml.addDefault(ConfigPath.GENERAL_CONFIGURATION_BUNGEE_MQTT_USERNAME, "user");
         yml.addDefault(ConfigPath.GENERAL_CONFIGURATION_BUNGEE_MQTT_PASSWORD, "password");
+        yml.addDefault(ConfigPath.GENERAL_CONFIGURATION_BUNGEE_MQTT_TRUSTSTORE, "");
+        yml.addDefault(ConfigPath.GENERAL_CONFIGURATION_BUNGEE_MQTT_TRUSTSTORE_PASSWORD, "");
+        yml.addDefault(ConfigPath.GENERAL_CONFIGURATION_BUNGEE_MQTT_TRUSTSTORE_TYPE, "PKCS12");
 
         yml.addDefault(ConfigPath.GENERAL_CONFIGURATION_HUNGER_WAITING, false);
         yml.addDefault(ConfigPath.GENERAL_CONFIGURATION_HUNGER_INGAME, false);

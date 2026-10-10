@@ -298,7 +298,10 @@ public class BedWars extends JavaPlugin {
                             config.getString(ConfigPath.GENERAL_CONFIGURATION_BUNGEE_MQTT_TOPIC_PREFIX),
                             config.getString(ConfigPath.GENERAL_CONFIGURATION_BUNGEE_MQTT_USERNAME),
                             config.getString(ConfigPath.GENERAL_CONFIGURATION_BUNGEE_MQTT_PASSWORD),
-                            config.getString(ConfigPath.GENERAL_CONFIGURATION_BUNGEE_OPTION_SERVER_ID));
+                            config.getString(ConfigPath.GENERAL_CONFIGURATION_BUNGEE_OPTION_SERVER_ID),
+                            config.getString(ConfigPath.GENERAL_CONFIGURATION_BUNGEE_MQTT_TRUSTSTORE),
+                            config.getString(ConfigPath.GENERAL_CONFIGURATION_BUNGEE_MQTT_TRUSTSTORE_PASSWORD),
+                            config.getString(ConfigPath.GENERAL_CONFIGURATION_BUNGEE_MQTT_TRUSTSTORE_TYPE));
                     registerEvents(new ArenaListeners());
                     //new com.andrei1058.bedwars.lobbymqtt.SendTask();
                 }

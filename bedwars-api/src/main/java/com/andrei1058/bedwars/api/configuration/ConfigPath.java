@@ -92,6 +92,10 @@ public class ConfigPath {
     public static final String GENERAL_CONFIGURATION_BUNGEE_MQTT_TOPIC_PREFIX = "bungee-settings.mqtt.topic-prefix";
     public static final String GENERAL_CONFIGURATION_BUNGEE_MQTT_USERNAME = "bungee-settings.mqtt.username";
     public static final String GENERAL_CONFIGURATION_BUNGEE_MQTT_PASSWORD = "bungee-settings.mqtt.password";
+    // Optional TLS trust settings, used when host is an ssl:// URI. Empty truststore = JVM default trust store.
+    public static final String GENERAL_CONFIGURATION_BUNGEE_MQTT_TRUSTSTORE = "bungee-settings.mqtt.truststore";
+    public static final String GENERAL_CONFIGURATION_BUNGEE_MQTT_TRUSTSTORE_PASSWORD = "bungee-settings.mqtt.truststore-password";
+    public static final String GENERAL_CONFIGURATION_BUNGEE_MQTT_TRUSTSTORE_TYPE = "bungee-settings.mqtt.truststore-type";
 
 
     public static final String GENERAL_CONFIGURATION_ALLOW_FIRE_EXTINGUISH = "allow-fire-extinguish";

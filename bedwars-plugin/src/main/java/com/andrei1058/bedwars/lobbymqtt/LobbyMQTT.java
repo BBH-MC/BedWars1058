@@ -47,6 +47,9 @@ public class LobbyMQTT {
     private static String mqttHost;
     private static String mqttUsername;
     private static String mqttPassword;
+    private static String mqttTruststore;
+    private static String mqttTruststorePassword;
+    private static String mqttTruststoreType;
 
     private static String topicPrefix;
     private static String clientID;
@@ -56,13 +59,25 @@ public class LobbyMQTT {
     private static Logger logger;
 
     public LobbyMQTT(String host, String tPrefix, String username, String password, String serverID) {
+        this(host, tPrefix, username, password, serverID, null, null, null);
+    }
+
+    /**
+     * @param host               "host:port" for plain MQTT (tcp:// is added), or a full URI such as "ssl://host:8883".
+     * @param truststore         optional truststore file for ssl://, relative to the server's working directory.
+     * @param truststorePassword optional truststore password.
+     * @param truststoreType     optional truststore type, PKCS12 if empty.
+     */
+    public LobbyMQTT(String host, String tPrefix, String username, String password, String serverID,
+                     String truststore, String truststorePassword, String truststoreType) {
+        logger = BedWars.plugin.getLogger();
+
         // Check nulls
         if (host == null || tPrefix == null || serverID == null) {
             logger.severe("MQTT Setup Failed: Mandatory MQTT parameters missing.");
             return;
         }
 
-        logger = BedWars.plugin.getLogger();
         topicPrefix = tPrefix;
         clientID = serverID;
 
@@ -70,17 +85,27 @@ public class LobbyMQTT {
         mqttHost = host;
         mqttUsername = username;
         mqttPassword = password;
+        mqttTruststore = truststore;
+        mqttTruststorePassword = truststorePassword;
+        mqttTruststoreType = truststoreType;
         AttemptMQTTConnection();
     }
 
     private void AttemptMQTTConnection() {
         MqttClient mqtt1;
+        String serverURI = MQTTTransport.serverURI(mqttHost);
 
         try {
-            mqtt1 = new MqttClient("tcp://" + mqttHost, clientID, new MemoryPersistence());
-
             // Connection options
             MqttConnectionOptions connOpts = new MqttConnectionOptions();
+
+            // TLS (ssl://) settings
+            if (!MQTTTransport.applyTLS(connOpts, serverURI, mqttTruststore, mqttTruststorePassword, mqttTruststoreType, logger)) {
+                mqtt = null;
+                return;
+            }
+
+            mqtt1 = new MqttClient(serverURI, clientID, new MemoryPersistence());
 
             // Setup user/pass if appropriate
             if (mqttUsername != null && !mqttUsername.isEmpty() && mqttPassword != null && !mqttPassword.isEmpty()) {
@@ -94,8 +119,13 @@ public class LobbyMQTT {
             // Connect
             mqtt1.connect(connOpts);
         } catch (MqttException e) {
-            logger.severe("MQTT Setup Failed: Failed to connect to MQTT broker. " + e.getMessage());
+            logger.severe("MQTT Setup Failed: Failed to connect to MQTT broker " + serverURI
+                    + " (reason code " + e.getReasonCode() + "). " + e.getMessage());
             logger.severe("Cause: " + e.getCause());
+            mqtt1 = null;
+        } catch (IllegalArgumentException e) {
+            // Paho rejects malformed or unsupported broker URIs this way
+            logger.severe("MQTT Setup Failed: invalid broker URI " + serverURI + ". " + e.getMessage());
             mqtt1 = null;
         }
 
